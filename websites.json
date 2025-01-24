@@ -1,0 +1,31 @@
+{
+    "settings": {
+        "retries": 2,
+        "timeout": 15
+    },
+    "websites": [
+        {
+            "name": "OpenCitations offcial WebSite",
+            "URL": "https://opencitations.net"
+        },
+        {
+            "name": "My API",
+            "URL": "https://opencitations.net/index/api/v2/citation/06101801781-06180334099"
+        }
+    ],
+    "notifications": {
+        "telegram": {
+            "enabled": true,
+            "token": "${{ secrets.TELEGRAM_TOKEN }}",
+            "chat_id": "${{ secrets.TELEGRAM_GROUP }}"
+        },
+        "slack": {
+            "enabled": false,
+            "webhook_url": "${{ secrets.SLACK_WEBHOOK }}"
+        },
+        "discord": {
+            "enabled": false,
+            "webhook_url": "${{ secrets.DISCORD_WEBHOOK }}"
+        }
+    }
+}

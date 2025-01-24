@@ -1,0 +1,94 @@
+name: Website Availability Check
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'  # Run every 30 minutes
+  workflow_dispatch:  # Allow manual execution
+
+jobs:
+  check-websites:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Install jq
+        run: sudo apt-get install jq curl -y
+      
+      - name: Check websites availability
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_GROUP: ${{ secrets.TELEGRAM_GROUP }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          # Read configuration
+          websites=$(jq -r '.websites[] | "\(.name)|\(.URL)"' websites.json)
+          retries=$(jq -r '.settings.retries' websites.json)
+          timeout=$(jq -r '.settings.timeout' websites.json)
+          
+          # Get notification settings
+          telegram_enabled=$(jq -r '.notifications.telegram.enabled' websites.json)
+          slack_enabled=$(jq -r '.notifications.slack.enabled' websites.json)
+          discord_enabled=$(jq -r '.notifications.discord.enabled' websites.json)
+          
+          # Function to send Telegram message
+          send_telegram_message() {
+            local message="$1"
+            if [ "$telegram_enabled" = "true" ]; then
+              curl -s -X POST \
+                "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+                -d "chat_id=${TELEGRAM_GROUP}" \
+                -d "text=${message}" \
+                -d "parse_mode=HTML"
+            fi
+          }
+          
+          # Function to send Slack message
+          send_slack_message() {
+            local message="$1"
+            if [ "$slack_enabled" = "true" ]; then
+              curl -X POST -H 'Content-type: application/json' \
+                --data "{\"text\":\"${message}\"}" \
+                "${SLACK_WEBHOOK}"
+            fi
+          }
+          
+          # Function to send Discord message
+          send_discord_message() {
+            local message="$1"
+            if [ "$discord_enabled" = "true" ]; then
+              curl -X POST -H 'Content-type: application/json' \
+                --data "{\"content\":\"${message}\"}" \
+                "${DISCORD_WEBHOOK}"
+            fi
+          }
+          
+          # Check each website
+          while IFS='|' read -r name url; do
+            echo "Checking $name at $url"
+            
+            if ! curl -s --compressed \
+              -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0' \
+              --max-time "${timeout}" \
+              --retry "${retries}" \
+              --retry-delay 5 \
+              --retry-max-time 30 \
+              "$url" > /dev/null; then
+              
+              # Prepare messages for different platforms
+              telegram_message="⚠️ WARNING: The website <b>${name}</b> is not accessible after ${retries} attempts.%0A%0AURL: ${url}"
+              slack_message="⚠️ *WARNING:* The website *${name}* is not accessible after ${retries} attempts.\nURL: ${url}"
+              discord_message="⚠️ **WARNING:** The website **${name}** is not accessible after ${retries} attempts.\nURL: ${url}"
+              
+              # Send notifications to all enabled platforms
+              send_telegram_message "$telegram_message"
+              send_slack_message "$slack_message"
+              send_discord_message "$discord_message"
+              
+              echo "Website $name is not accessible after ${retries} attempts"
+            else
+              echo "Website $name is accessible"
+            fi
+          done <<< "$websites"
