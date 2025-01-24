@@ -69,6 +69,19 @@ URL: https://example.com
 - Customizable check frequency
 - Easy to set up and customize
 
+## GitHub Pages
+
+You can check the status of your monitoring setup using GitHub Pages. The provided `index.html` will display a summary of your configuration in a nice dashboard.
+
+To enable this feature:
+1. Go to repository Settings → Pages
+2. Select the main branch as source
+3. Click Save
+
+Your dashboard will be available at: `https://{your_git_username}.github.io/uptimePluma/`
+
+Live demo: https://rempairamore.github.io/uptimePluma/
+
 ## Customization
 
 Want to change how often the checks run? Edit the cron schedule in `.github/workflows/check-websites.yml`:
