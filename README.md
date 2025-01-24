@@ -9,6 +9,12 @@ Track your websites uptime with GitHub Actions - no extra servers required
 
 This tool checks your websites and sends you instant notifications through Telegram, Slack, or Discord if any site becomes unreachable. No servers to maintain, no complicated setup - just GitHub Actions doing the work for you.
 
+- No server required
+- Multiple notification channels (Telegram, Slack, Discord)
+- Auto-retry before marking a site as down
+- Customizable check frequency
+- Easy to set up and customize
+
 ## Quick Start
 
 1. Fork this repository
@@ -17,32 +23,42 @@ This tool checks your websites and sends you instant notifications through Teleg
 ```json
 {
     "settings": {
-        "retries": 2,        /* Number of attempts before marking a site as down */
-        "timeout": 15        /* Timeout in seconds for each request */
+        "retries": 2,
+        "timeout": 15
     },
-    "websites": [            /* List of websites to monitor */
+    "websites": [
         {
-            "name": "My Company Website",  /* Display name for notifications */
-            "URL": "https://mycompany.com" /* URL to check */
+            "name": "My Company Website",
+            "URL": "https://mycompany.com"
         },
         {
             "name": "My E-commerce",
             "URL": "https://shop.mycompany.com"
         }
     ],
-    "notifications": {       /* Configure your notification channels */
+    "notifications": {
         "telegram": {
-            "enabled": true  /* Set to true to receive Telegram notifications */
+            "enabled": true
         },
         "slack": {
-            "enabled": false /* Set to true to receive Slack notifications */
+            "enabled": false
         },
         "discord": {
-            "enabled": false /* Set to true to receive Discord notifications */
+            "enabled": false
         }
     }
 }
 ```
+**Settings configuration:**
+- `retries`: Number of attempts before marking a site as down
+- `timeout`: Timeout in seconds for each request
+
+**Websites configuration:**
+- `name`: Display name that will appear in notifications
+- `URL`: The URL to monitor
+
+**Notifications configuration:**
+- Set `enabled` to true for each platform you want to use
 
 3. Set up notifications:
    - Enable your preferred platform(s) in the notifications section of `websites.json`
@@ -55,19 +71,12 @@ That's it! The monitoring will start automatically.
 
 ## What you'll get
 
-When a website becomes unreachable, you'll receive a notification like this (example for Telegram):
+When a website becomes unreachable, you'll receive a notification like this:
+
 ```
 ⚠️ WARNING: Website My Website is not accessible.
 URL: https://example.com
 ```
-
-## Features
-
-- No server required
-- Multiple notification channels (Telegram, Slack, Discord)
-- Auto-retry before marking a site as down
-- Customizable check frequency
-- Easy to set up and customize
 
 ## GitHub Pages
 
@@ -82,9 +91,10 @@ Your dashboard will be available at: `https://{your_git_username}.github.io/upti
 
 Live demo: https://rempairamore.github.io/uptimePluma/
 
-## Customization
+## Crontab Customization
 
-Want to change how often the checks run? Edit the cron schedule in `.github/workflows/check-websites.yml`:
+Edit the cron schedule in `.github/workflows/check-websites.yml`:
+
 ```yaml
 schedule:
   - cron: '*/30 * * * *'  # Example: every 30 minutes
