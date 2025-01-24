@@ -2,7 +2,7 @@
 
 Track your websites uptime with GitHub Actions - no extra servers required
 
-> Why "Pluma"? In Bologna's dialect, "pluma" means being flat broke - just like the lint in your empty pockets. And this tool keeps your wallet just as empty: zero costs, zero servers.
+> Why "Pluma"? In Bolognese dialect, "pluma" means being flat broke - just like the lint in your empty pockets. And this tool keeps your wallet just as empty: zero costs, zero servers.
 
 
 ## How it works
