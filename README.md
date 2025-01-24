@@ -17,28 +17,28 @@ This tool checks your websites and sends you instant notifications through Teleg
 ```json
 {
     "settings": {
-        "retries": 2,
-        "timeout": 15
+        "retries": 2,        // Number of attempts before marking a site as down
+        "timeout": 15        // Timeout in seconds for each request
     },
-    "websites": [
+    "websites": [            // List of websites to monitor
         {
-            "name": "My Company Website",
-            "URL": "https://mycompany.com"
+            "name": "My Company Website",  // Display name for notifications
+            "URL": "https://mycompany.com" // URL to check
         },
         {
             "name": "My E-commerce",
             "URL": "https://shop.mycompany.com"
         }
     ],
-    "notifications": {
+    "notifications": {       // Configure your notification channels
         "telegram": {
-            "enabled": true
+            "enabled": true  // Set to true to receive Telegram notifications
         },
         "slack": {
-            "enabled": false
+            "enabled": false // Set to true to receive Slack notifications
         },
         "discord": {
-            "enabled": false
+            "enabled": false // Set to true to receive Discord notifications
         }
     }
 }
