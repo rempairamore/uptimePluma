@@ -2,6 +2,9 @@
 
 Track your websites uptime with GitHub Actions - no extra servers required
 
+> Why "Pluma"? In Bologna's dialect, "pluma" means being flat broke - just like the lint in your empty pockets. And this tool keeps your wallet just as empty: zero costs, zero servers.
+
+
 ## How it works
 
 This tool checks your websites and sends you instant notifications through Telegram, Slack, or Discord if any site becomes unreachable. No servers to maintain, no complicated setup - just GitHub Actions doing the work for you.
