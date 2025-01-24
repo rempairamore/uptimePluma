@@ -15,7 +15,7 @@
     ],
     "notifications": {
         "telegram": {
-            "enabled": true,
+            "enabled": false,
             "token": "${{ secrets.TELEGRAM_TOKEN }}",
             "chat_id": "${{ secrets.TELEGRAM_GROUP }}"
         },
