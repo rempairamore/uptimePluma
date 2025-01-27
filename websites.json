@@ -1,6 +1,6 @@
 {
     "settings": {
-        "retries": 2,
+        "retries": 4,
         "timeout": 15
     },
     "websites": [
@@ -9,8 +9,12 @@
             "URL": "https://opencitations.net"
         },
         {
-            "name": "My API",
+            "name": "Index API",
             "URL": "https://opencitations.net/index/api/v2/citation/06101801781-06180334099"
+        },
+        {
+            "name": "META API",
+            "URL": "https://opencitations.net/meta/api/v1/metadata/doi:10.1007/978-1-4020-9632-7"
         }
     ],
     "notifications": {
@@ -24,7 +28,7 @@
             "webhook_url": "${{ secrets.SLACK_WEBHOOK }}"
         },
         "discord": {
-            "enabled": false,
+            "enabled": true,
             "webhook_url": "${{ secrets.DISCORD_WEBHOOK }}"
         }
     }
