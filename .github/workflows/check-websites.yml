@@ -80,7 +80,7 @@ jobs:
               # Prepare messages for different platforms
               telegram_message="⚠️ WARNING: The website <b>${name}</b> is not accessible after ${retries} attempts.%0A%0AURL: ${url}"
               slack_message="⚠️ *WARNING:* The website *${name}* is not accessible after ${retries} attempts.\nURL: ${url}"
-              discord_message="⚠️ **WARNING:** The website **${name}** is not accessible after ${retries} attempts.\nURL: ${url}"
+              discord_message="⚠️ @here **WARNING:** The website **${name}** is not accessible after ${retries} attempts.\nURL: ${url}"
               
               # Send notifications to all enabled platforms
               send_telegram_message "$telegram_message"
