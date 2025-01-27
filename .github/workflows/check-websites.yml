@@ -2,7 +2,7 @@ name: Website Availability Check
 
 on:
   schedule:
-    - cron: '*/30 * * * *'  # Run every 30 minutes
+    - cron: '*/15 * * * *'  # Run every 30 minutes
   workflow_dispatch:  # Allow manual execution
 
 jobs:
