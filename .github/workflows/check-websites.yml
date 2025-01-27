@@ -78,8 +78,8 @@ jobs:
               "$url" > /dev/null; then
               
               # Prepare messages for different platforms
-              telegram_message="⚠️ WARNING: The website <b>${name}</b> is not accessible after ${retries} attempts.%0A%0AURL: ${url}"
-              slack_message="⚠️ *WARNING:* The website *${name}* is not accessible after ${retries} attempts.\nURL: ${url}"
+              telegram_message="⚠️ uptimePluma WARNING: The website <b>${name}</b> is not accessible after ${retries} attempts.%0A%0AURL: ${url}"
+              slack_message="⚠️ *uptimePluma WARNING:* The website *${name}* is not accessible after ${retries} attempts.\nURL: ${url}"
               discord_message="⚠️ **uptimePluma WARNING:** The website **${name}** is not accessible after ${retries} attempts.\nURL: ${url}"
               
               # Send notifications to all enabled platforms
