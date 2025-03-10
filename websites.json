@@ -6,11 +6,11 @@
     "websites": [
         {
             "name": "OpenCitations offcial WebSite",
-            "URL": "https://opencitations.net"
+            "URL": "https://opencitations.com"
         },
         {
             "name": "My API",
-            "URL": "https://opencitations.net/index/api/v2/citation/06101801781-06180334099"
+            "URL": "https://opencitations.net/intex"
         }
     ],
     "notifications": {
