@@ -17,7 +17,7 @@ This tool checks your websites and sends you instant notifications through Teleg
 
 ## Quick Start
 
-1. Fork this repository
+1. **Fork** this repository
 
 2. Edit `websites.json` with your websites and notification preferences:
 ```json
