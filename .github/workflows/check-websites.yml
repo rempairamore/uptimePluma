@@ -252,4 +252,4 @@ jobs:
           git commit -m "Update date.log with latest check timestamp" || echo "No changes to commit"
           
           # Push changes to the OC repository
-          git push
+          git push "https://${GITHUB_ACTOR}:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:${GITHUB_REF#refs/heads/}
