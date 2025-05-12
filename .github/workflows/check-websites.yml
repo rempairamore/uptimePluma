@@ -1,5 +1,9 @@
 name: Website Availability Check with Python
 
+permissions:
+  contents: write
+  actions: read
+  
 on:
   schedule:
     - cron: '*/15 * * * *'  # Run every 15 minutes
