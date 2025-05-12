@@ -235,3 +235,21 @@ jobs:
           
           # Execute the Python script
           python check_websites.py
+          
+      - name: Write current date and time to log file
+        run: |
+          # Create date.log file with current date and time
+          echo "$(date +'%Y-%m-%d %H:%M:%S') - Website check executed" >> date.log
+          
+      - name: Commit and push date.log to repository
+        run: |
+          # Configure Git
+          git config --local user.email "github-actions@github.com"
+          git config --local user.name "GitHub Actions"
+          
+          # Add date.log and commit
+          git add date.log
+          git commit -m "Update date.log with latest check timestamp" || echo "No changes to commit"
+          
+          # Push changes to the OC repository
+          git push
