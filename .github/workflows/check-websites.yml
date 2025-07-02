@@ -1,9 +1,5 @@
-name: Website Availability Check with Python
+name: Website Availability Check with Bash
 
-permissions:
-  contents: write
-  actions: read
-  
 on:
   schedule:
     - cron: '*/15 * * * *'  # Run every 15 minutes
@@ -15,17 +11,12 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
+        uses: actions/checkout@v4
       
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install requests
+          sudo apt-get update
+          sudo apt-get install -y jq curl
       
       - name: Check websites availability
         env:
@@ -34,226 +25,116 @@ jobs:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
-          # Create Python script for website checking
-          cat > check_websites.py << 'EOF'
-          import json
-          import os
-          import requests
-          import sys
-          import time
+          #!/bin/bash
           
-          # Load config
-          with open('websites.json', 'r') as f:
-              config = json.load(f)
+          [[ ! -f "websites.json" ]] && { echo "websites.json missing"; exit 1; }
+          jq empty websites.json || { echo "broken json"; exit 1; }
           
-          websites = config['websites']
-          settings = config['settings']
-          notifications = config['notifications']
+          retries=$(jq -r '.settings.retries' websites.json)
+          timeout=$(jq -r '.settings.timeout' websites.json)
           
-          # Environment variables
-          TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
-          TELEGRAM_GROUP = os.environ.get('TELEGRAM_GROUP')
-          SLACK_WEBHOOK = os.environ.get('SLACK_WEBHOOK')
-          DISCORD_WEBHOOK = os.environ.get('DISCORD_WEBHOOK')
+          tg_on=$(jq -r '.notifications.telegram.enabled' websites.json)
+          slack_on=$(jq -r '.notifications.slack.enabled' websites.json)
+          discord_on=$(jq -r '.notifications.discord.enabled' websites.json)
           
-          def send_telegram_message(message):
-              if not notifications['telegram']['enabled']:
-                  return
-                  
-              try:
-                  response = requests.post(
-                      f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-                      data={
-                          "chat_id": TELEGRAM_GROUP,
-                          "text": message,
-                          "parse_mode": "HTML"
-                      },
-                      timeout=10
-                  )
-                  if response.status_code != 200:
-                      print(f"Failed to send Telegram message. Status code: {response.status_code}")
-              except Exception as e:
-                  print(f"Failed to send Telegram message: {e}")
+          # send telegram msg
+          tg_send() {
+            [[ "$tg_on" != "true" || -z "$TELEGRAM_TOKEN" || -z "$TELEGRAM_GROUP" ]] && return
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+              -d "chat_id=${TELEGRAM_GROUP}" -d "text=$1" -d "parse_mode=HTML" &>/dev/null
+          }
           
-          def send_slack_message(message):
-              if not notifications['slack']['enabled']:
-                  return
-                  
-              try:
-                  response = requests.post(
-                      SLACK_WEBHOOK,
-                      json={"text": message},
-                      timeout=10
-                  )
-                  if response.status_code != 200:
-                      print(f"Failed to send Slack message. Status code: {response.status_code}")
-              except Exception as e:
-                  print(f"Failed to send Slack message: {e}")
+          # slack webhook
+          slack_send() {
+            [[ "$slack_on" != "true" || -z "$SLACK_WEBHOOK" ]] && return
+            curl -s -X POST "$SLACK_WEBHOOK" -H "Content-Type: application/json" \
+              -d "{\"text\":\"$1\"}" &>/dev/null
+          }
           
-          def send_discord_message(message):
-              if not notifications['discord']['enabled']:
-                  return
-                  
-              try:
-                  response = requests.post(
-                      DISCORD_WEBHOOK,
-                      json={"content": message},
-                      timeout=10
-                  )
-                  if response.status_code != 204 and response.status_code != 200:
-                      print(f"Failed to send Discord message. Status code: {response.status_code}")
-              except Exception as e:
-                  print(f"Failed to send Discord message: {e}")
+          # discord ping
+          discord_send() {
+            [[ "$discord_on" != "true" || -z "$DISCORD_WEBHOOK" ]] && return
+            curl -s -X POST "$DISCORD_WEBHOOK" -H "Content-Type: application/json" \
+              -d "{\"content\":\"$1\"}" &>/dev/null
+          }
           
-          def check_website(name, url):
-              """
-              Check website and return status code or error information.
-              Does NOT send notifications - just returns result info.
+          # figure out what kind of error this is
+          error_type() {
+            local code=$1
+            (( code >= 500 )) && echo "SERVER ERROR" && return
+            (( code >= 400 )) && echo "CLIENT ERROR" && return  
+            (( code >= 300 )) && echo "REDIRECT" && return
+            echo "UNKNOWN ERROR"
+          }
+          
+          # main check function
+          check_site() {
+            local name="$1" url="$2"
+            echo "Checking $name..."
+            
+            local site_up=false status_code="" error_type="" error_msg=""
+            
+            for attempt in $(seq 1 $retries); do
+              [[ $attempt -gt 1 ]] && { echo "Retry $attempt/$retries"; sleep 5; }
               
-              Returns:
-                  dict: Contains success flag, status_code (if available), and error info
-              """
-              headers = {
-                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0'
-              }
+              response=$(curl -s -w "%{http_code}" -H "User-Agent: Mozilla/5.0" \
+                --max-time "$timeout" -L "$url" 2>&1)
+              curl_code=$?
               
-              try:
-                  response = requests.get(
-                      url, 
-                      headers=headers, 
-                      timeout=settings['timeout'],
-                      allow_redirects=True
-                  )
-                  
-                  # Get the status code
-                  status_code = response.status_code
-                  
-                  # Return result with status code
-                  return {
-                      'success': status_code == 200,
-                      'status_code': status_code,
-                      'error_type': None if status_code == 200 else get_error_type(status_code),
-                      'message': None
-                  }
-                  
-              except requests.exceptions.RequestException as e:
-                  error_message = str(e)
-                  error_type = "CONNECTION ERROR"
-                  
-                  # Check if it's a timeout
-                  if isinstance(e, requests.exceptions.Timeout):
-                      error_type = "TIMEOUT"
-                  # Check if it's a connection error
-                  elif isinstance(e, requests.exceptions.ConnectionError):
-                      error_type = "CONNECTION REFUSED"
-                  
-                  # Return result with error info
-                  return {
-                      'success': False,
-                      'status_code': None,
-                      'error_type': error_type,
-                      'message': error_message
-                  }
+              if [[ $curl_code -eq 0 ]]; then
+                status_code="${response: -3}"
+                echo "Got status $status_code"
+                [[ "$status_code" == "200" ]] && { site_up=true; break; }
+                error_type=$(error_type "$status_code")
+              else
+                # handle curl errors
+                case $curl_code in
+                  28) error_type="TIMEOUT"; error_msg="timed out after ${timeout}s" ;;
+                  7)  error_type="CONNECTION REFUSED"; error_msg="can't connect to host" ;;
+                  *)  error_type="CONNECTION ERROR"; error_msg="curl error $curl_code" ;;
+                esac
+                echo "Request failed: $error_type"
+              fi
+            done
+            
+            if [[ "$site_up" == "true" ]]; then
+              echo "$name is accessible"
+              return 0
+            fi
+            
+            echo "$name failed after $retries attempts"
+            
+            # send notifications
+            if [[ -n "$status_code" ]]; then
+              tg_msg="⚠️ WARNING: <b>$name</b> returned $error_type: <b>$status_code</b>%0A%0AURL: $url"
+              slack_msg="⚠️ *WARNING:* *$name* returned $error_type: *$status_code*\nURL: $url" 
+              discord_msg="⚠️ @here **WARNING:** **$name** returned $error_type: **$status_code**\nURL: $url"
+            else
+              tg_msg="⚠️ WARNING: <b>$name</b> not accessible. $error_type%0A%0AURL: $url%0AError: $error_msg"
+              slack_msg="⚠️ *WARNING:* *$name* not accessible. $error_type\nURL: $url\nError: $error_msg"
+              discord_msg="⚠️ @here **WARNING:** **$name** not accessible. $error_type\nURL: $url\nError: $error_msg"
+            fi
+            
+            tg_send "$tg_msg"
+            slack_send "$slack_msg" 
+            discord_send "$discord_msg"
+            return 1
+          }
           
-          def get_error_type(status_code):
-              """Determine error type based on status code"""
-              if status_code >= 500:
-                  return "SERVER ERROR"
-              elif status_code >= 400:
-                  return "CLIENT ERROR"
-              elif status_code >= 300:
-                  return "REDIRECT"
-              return "UNKNOWN ERROR"
+          # run checks on all sites
+          success_count=0
+          failure_count=0
+          total_sites=$(jq '.websites | length' websites.json)
           
-          def send_notifications(name, url, result):
-              """Send notifications based on check result"""
-              if result['status_code'] is not None:
-                  # HTTP response case
-                  error_type = result['error_type']
-                  status_code = result['status_code']
-                  
-                  telegram_message = f"⚠️ WARNING: The website <b>{name}</b> returned {error_type}: <b>{status_code}</b>.\n\nURL: {url}"
-                  slack_message = f"⚠️ *WARNING:* The website *{name}* returned {error_type}: *{status_code}*.\nURL: {url}"
-                  discord_message = f"⚠️ @here **WARNING:** The website **{name}** returned {error_type}: **{status_code}**.\nURL: {url}"
-              else:
-                  # Network error case
-                  error_type = result['error_type']
-                  error_message = result['message']
-                  
-                  telegram_message = f"⚠️ WARNING: The website <b>{name}</b> is not accessible. {error_type}.\n\nURL: {url}\nError: {error_message}"
-                  slack_message = f"⚠️ *WARNING:* The website *{name}* is not accessible. {error_type}.\nURL: {url}\nError: {error_message}"
-                  discord_message = f"⚠️ @here **WARNING:** The website **{name}** is not accessible. {error_type}.\nURL: {url}\nError: {error_message}"
-              
-              # Send notifications to all enabled platforms
-              send_telegram_message(telegram_message)
-              send_slack_message(slack_message)
-              send_discord_message(discord_message)
-              
-          # Main execution
-          success_count = 0
-          failure_count = 0
+          for ((i=0; i<total_sites; i++)); do
+            site_name=$(jq -r ".websites[$i].name" websites.json)
+            site_url=$(jq -r ".websites[$i].URL" websites.json)
+            
+            if check_site "$site_name" "$site_url"; then
+              ((success_count++))
+            else  
+              ((failure_count++))
+            fi
+          done
           
-          for website in websites:
-              name = website['name']
-              url = website['URL']
-              
-              print(f"Checking {name} at {url}")
-              
-              # Initialize as failed
-              website_accessible = False
-              last_result = None
-              
-              # Try multiple times based on retry setting
-              for attempt in range(settings['retries']):
-                  if attempt > 0:
-                      print(f"Retry {attempt+1}/{settings['retries']} for {name}")
-                      time.sleep(5)  # Wait 5 seconds between retries
-                  
-                  # Check the website
-                  result = check_website(name, url)
-                  last_result = result
-                  
-                  # Log the result
-                  if result['status_code'] is not None:
-                      print(f"Attempt {attempt+1}: Website {name} returned status code: {result['status_code']}")
-                  else:
-                      print(f"Attempt {attempt+1}: Website {name} error: {result['error_type']} - {result['message']}")
-                  
-                  # If successful, no need to retry
-                  if result['success']:
-                      website_accessible = True
-                      break
-              
-              # After all retries, record the result
-              if website_accessible:
-                  success_count += 1
-                  print(f"Website {name} is accessible (HTTP 200 OK)")
-              else:
-                  failure_count += 1
-                  print(f"Website {name} is NOT accessible after {settings['retries']} attempts")
-                  # Only send notification after all retries have failed
-                  send_notifications(name, url, last_result)
-          
-          print(f"Check complete. {success_count} sites up, {failure_count} sites down.")
-          EOF
-          
-          # Execute the Python script
-          python check_websites.py
-          
-      - name: Write current date and time to log file
-        run: |
-          # Create date.log file with current date and time
-          echo "$(date +'%Y-%m-%d %H:%M:%S') - Website check executed" >> date.log
-          
-      - name: Commit and push date.log to repository
-        run: |
-          # Configure Git
-          git config --local user.email "github-actions@github.com"
-          git config --local user.name "GitHub Actions"
-          
-          # Add date.log and commit
-          git add date.log
-          git commit -m "Update date.log with latest check timestamp" || echo "No changes to commit"
-          
-          # Push changes to the OC repository
-          git push "https://${GITHUB_ACTOR}:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:${GITHUB_REF#refs/heads/}
+          echo "Check completed. $success_count sites up, $failure_count sites down"

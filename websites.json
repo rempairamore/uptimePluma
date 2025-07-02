@@ -1,7 +1,7 @@
 {
     "settings": {
-        "retries": 2,
-        "timeout": 15
+        "retries": 4,
+        "timeout": 35
     },
     "websites": [
         {
@@ -19,7 +19,7 @@
     ],
     "notifications": {
         "telegram": {
-            "enabled": false,
+            "enabled": true,
             "token": "${{ secrets.TELEGRAM_TOKEN }}",
             "chat_id": "${{ secrets.TELEGRAM_GROUP }}"
         },
