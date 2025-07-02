@@ -1,20 +1,20 @@
 {
     "settings": {
-        "retries": 4,
+        "retries": 2,
         "timeout": 15
     },
     "websites": [
         {
             "name": "OpenCitations offcial WebSite",
-            "URL": "https://opencitations.net"
+            "URL": "https://opencitations.net/"
         },
         {
             "name": "Index API",
-            "URL": "https://opencitations.net/index/api/v2/citation/06101801781-06180334099"
+            "URL": "https://api.opencitations.net/index/v2/citation/06101801781-06180334099"
         },
         {
             "name": "META API",
-            "URL": "https://opencitations.net/meta/api/v1/metadata/doi:10.1007/978-1-4020-9632-7"
+            "URL": "https://api.opencitations.net/meta/v1/metadata/doi:10.1007/978-1-4020-9632-7"
         }
     ],
     "notifications": {
