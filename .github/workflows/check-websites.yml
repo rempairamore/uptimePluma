@@ -1,24 +1,18 @@
-name: Website Availability Check with Bash
+name: Website Availability Check
 
 on:
   schedule:
-    - cron: '*/15 * * * *'  # Run every 15 minutes
-  workflow_dispatch:  # Allow manual execution
+    - cron: '*/15 * * * *'  # Runs only on default branch automatically
+  workflow_dispatch:  # Can be triggered manually on any branch
 
 jobs:
   check-websites:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq curl
-      
-      - name: Check websites availability
+      - name: Check websites
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_GROUP: ${{ secrets.TELEGRAM_GROUP }}
@@ -28,202 +22,101 @@ jobs:
           #!/bin/bash
           set -euo pipefail
           
-          # Check if websites.json exists and is valid
-          if [[ ! -f "websites.json" ]]; then
-            echo "ERROR: websites.json file is missing"
-            exit 1
-          fi
+          [[ ! -f "websites.json" ]] && { echo "ERROR: websites.json missing"; exit 1; }
+          jq empty websites.json 2>/dev/null || { echo "ERROR: Invalid JSON"; exit 1; }
           
-          if ! jq empty websites.json 2>/dev/null; then
-            echo "ERROR: websites.json contains invalid JSON"
-            exit 1
-          fi
+          CONFIG=$(jq -r '.settings // {}' websites.json)
+          RETRIES=$(echo "$CONFIG" | jq -r '.retries // 3')
+          TIMEOUT=$(echo "$CONFIG" | jq -r '.timeout // 10')
           
-          # Read configuration with defaults
-          retries=$(jq -r '.settings.retries // 3' websites.json)
-          timeout=$(jq -r '.settings.timeout // 10' websites.json)
+          NOTIF=$(jq -r '.notifications // {}' websites.json)
+          TG_ON=$(echo "$NOTIF" | jq -r '.telegram.enabled // false')
+          SLACK_ON=$(echo "$NOTIF" | jq -r '.slack.enabled // false')
+          DISCORD_ON=$(echo "$NOTIF" | jq -r '.discord.enabled // false')
           
-          tg_on=$(jq -r '.notifications.telegram.enabled // false' websites.json)
-          slack_on=$(jq -r '.notifications.slack.enabled // false' websites.json)
-          discord_on=$(jq -r '.notifications.discord.enabled // false' websites.json)
-          
-          # Validate configuration values
-          if ! [[ "$retries" =~ ^[1-9][0-9]*$ ]]; then
-            echo "ERROR: Invalid retries value: $retries"
-            exit 1
-          fi
-          
-          if ! [[ "$timeout" =~ ^[1-9][0-9]*$ ]]; then
-            echo "ERROR: Invalid timeout value: $timeout"
-            exit 1
-          fi
-          
-          # Send telegram message
-          tg_send() {
-            [[ "$tg_on" != "true" || -z "${TELEGRAM_TOKEN:-}" || -z "${TELEGRAM_GROUP:-}" ]] && return 0
+          notify() {
+            local type=$1 name=$2 status=$3 url=$4 msg=${5:-}
             
-            if ! curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
-              -d "chat_id=${TELEGRAM_GROUP}" -d "text=$1" -d "parse_mode=HTML" &>/dev/null; then
-              echo "WARNING: Failed to send Telegram notification"
-              return 1
-            fi
-            return 0
-          }
-          
-          # Send slack webhook
-          slack_send() {
-            [[ "$slack_on" != "true" || -z "${SLACK_WEBHOOK:-}" ]] && return 0
-            
-            if ! curl -s -X POST "$SLACK_WEBHOOK" -H "Content-Type: application/json" \
-              -d "{\"text\":\"$1\"}" &>/dev/null; then
-              echo "WARNING: Failed to send Slack notification"
-              return 1
-            fi
-            return 0
-          }
-          
-          # Send discord notification
-          discord_send() {
-            [[ "$discord_on" != "true" || -z "${DISCORD_WEBHOOK:-}" ]] && return 0
-            
-            if ! curl -s -X POST "$DISCORD_WEBHOOK" -H "Content-Type: application/json" \
-              -d "{\"content\":\"$1\"}" &>/dev/null; then
-              echo "WARNING: Failed to send Discord notification"
-              return 1
-            fi
-            return 0
-          }
-          
-          # Determine error type based on HTTP status code
-          error_type() {
-            local code=$1
-            (( code >= 500 )) && echo "SERVER ERROR" && return 0
-            (( code >= 400 )) && echo "CLIENT ERROR" && return 0
-            (( code >= 300 )) && echo "REDIRECT" && return 0
-            echo "UNKNOWN ERROR"
-            return 0
-          }
-          
-          # Main website check function
-          check_site() {
-            local name="$1" url="$2"
-            echo "Checking $name..."
-            
-            local site_up=false status_code="" error_type_result="" error_msg=""
-            
-            for attempt in $(seq 1 "$retries"); do
-              [[ $attempt -gt 1 ]] && { echo "Retry $attempt/$retries"; sleep 5; }
-              
-              local temp_response
-              temp_response=$(curl -s -w "%{http_code}" -H "User-Agent: Mozilla/5.0" \
-                --max-time "$timeout" -L "$url" 2>&1)
-              local curl_exit_code=$?
-              
-              if [[ $curl_exit_code -eq 0 ]]; then
-                status_code="${temp_response: -3}"
-                echo "Got status $status_code"
-                
-                if [[ "$status_code" == "200" ]]; then
-                  site_up=true
-                  break
-                fi
-                
-                error_type_result=$(error_type "$status_code")
-              else
-                # Handle curl errors with specific error codes
-                case $curl_exit_code in
-                  28) error_type_result="TIMEOUT"; error_msg="Request timed out after ${timeout}s" ;;
-                  7)  error_type_result="CONNECTION REFUSED"; error_msg="Cannot connect to host" ;;
-                  6)  error_type_result="DNS ERROR"; error_msg="Could not resolve host" ;;
-                  35) error_type_result="SSL ERROR"; error_msg="SSL connect error" ;;
-                  *)  error_type_result="CONNECTION ERROR"; error_msg="Curl error code $curl_exit_code" ;;
-                esac
-                echo "Request failed: $error_type_result - $error_msg"
-              fi
-            done
-            
-            if [[ "$site_up" == "true" ]]; then
-              echo "$name is accessible"
+            if [[ "$status" == "200" ]]; then
               return 0
             fi
             
-            echo "$name failed after $retries attempts"
+            local alert="⚠️ $name is down!"
+            [[ -n "$status" ]] && alert="$alert (HTTP $status)" || alert="$alert ($msg)"
             
-            # Prepare notification messages
-            local tg_msg slack_msg discord_msg
-            if [[ -n "$status_code" ]]; then
-              tg_msg="⚠️ WARNING: <b>$name</b> returned $error_type_result: <b>$status_code</b>%0A%0AURL: $url"
-              slack_msg="⚠️ *WARNING:* *$name* returned $error_type_result: *$status_code*\nURL: $url"
-              discord_msg="⚠️ @here **WARNING:** **$name** returned $error_type_result: **$status_code**\nURL: $url"
-            else
-              tg_msg="⚠️ WARNING: <b>$name</b> not accessible. $error_type_result%0A%0AURL: $url%0AError: $error_msg"
-              slack_msg="⚠️ *WARNING:* *$name* not accessible. $error_type_result\nURL: $url\nError: $error_msg"
-              discord_msg="⚠️ @here **WARNING:** **$name** not accessible. $error_type_result\nURL: $url\nError: $error_msg"
+            if [[ "$TG_ON" == "true" && -n "${TELEGRAM_TOKEN:-}" && -n "${TELEGRAM_GROUP:-}" ]]; then
+              curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+                -d "chat_id=${TELEGRAM_GROUP}" \
+                -d "text=<b>$alert</b>%0A%0AURL: $url" \
+                -d "parse_mode=HTML" &>/dev/null || true
             fi
             
-            # Send notifications (don't fail the script if notifications fail)
-            tg_send "$tg_msg" || true
-            slack_send "$slack_msg" || true
-            discord_send "$discord_msg" || true
+            if [[ "$SLACK_ON" == "true" && -n "${SLACK_WEBHOOK:-}" ]]; then
+              curl -sS -X POST "$SLACK_WEBHOOK" \
+                -H "Content-Type: application/json" \
+                -d "{\"text\":\"*$alert*\nURL: $url\"}" &>/dev/null || true
+            fi
+            
+            if [[ "$DISCORD_ON" == "true" && -n "${DISCORD_WEBHOOK:-}" ]]; then
+              curl -sS -X POST "$DISCORD_WEBHOOK" \
+                -H "Content-Type: application/json" \
+                -d "{\"content\":\"@here **$alert**\nURL: $url\"}" &>/dev/null || true
+            fi
+          }
+          
+          check_site() {
+            local name=$1 url=$2
+            echo "Checking $name..."
+            
+            for ((attempt=1; attempt<=RETRIES; attempt++)); do
+              [[ $attempt -gt 1 ]] && { echo "  Retry $attempt/$RETRIES"; sleep 5; }
+              
+              response=$(curl -sS -w "\n%{http_code}" -H "User-Agent: Mozilla/5.0" \
+                --max-time "$TIMEOUT" -L "$url" 2>&1) && {
+                status="${response##*$'\n'}"
+                echo "  Status: $status"
+                [[ "$status" == "200" ]] && return 0
+                notify "http" "$name" "$status" "$url"
+                continue
+              }
+              
+              case $? in
+                28) error="Timeout after ${TIMEOUT}s" ;;
+                7)  error="Connection refused" ;;
+                6)  error="DNS resolution failed" ;;
+                35) error="SSL error" ;;
+                *)  error="Connection error (code $?)" ;;
+              esac
+              
+              echo "  Failed: $error"
+              notify "error" "$name" "" "$url" "$error"
+            done
             
             return 1
           }
           
-          # Main execution
-          echo "Starting website availability check..."
+          echo "=== Website Availability Check ==="
           
-          success_count=0
-          failure_count=0
-          total_sites=$(jq '.websites | length' websites.json)
+          sites=$(jq -c '.websites[]' websites.json 2>/dev/null || echo "")
+          [[ -z "$sites" ]] && { echo "No websites configured"; exit 0; }
           
-          if [[ "$total_sites" -eq 0 ]]; then
-            echo "WARNING: No websites found in configuration"
-            exit 0
-          fi
+          total=0 up=0
           
-          echo "Found $total_sites websites to check"
-          
-          # Check all sites
-          for ((i=0; i<total_sites; i++)); do
-            site_name=$(jq -r ".websites[$i].name" websites.json)
-            site_url=$(jq -r ".websites[$i].URL" websites.json)
+          while IFS= read -r site; do
+            name=$(echo "$site" | jq -r '.name // ""')
+            url=$(echo "$site" | jq -r '.URL // ""')
             
-            # Validate site data
-            if [[ -z "$site_name" || "$site_name" == "null" ]]; then
-              echo "ERROR: Invalid site name at index $i"
-              continue
-            fi
+            [[ -z "$name" || -z "$url" ]] && continue
             
-            if [[ -z "$site_url" || "$site_url" == "null" ]]; then
-              echo "ERROR: Invalid site URL at index $i"
-              continue
-            fi
-            
-            echo "--- Site $((i+1))/$total_sites ---"
-            
-            if check_site "$site_name" "$site_url"; then
-              ((success_count++))
-            else
-              ((failure_count++))
-            fi
-            
-            echo ""
-          done
+            total=$((total + 1))
+            check_site "$name" "$url" && up=$((up + 1))
+            echo
+          done <<< "$sites"
           
-          # Summary
-          echo "=== CHECK SUMMARY ==="
-          echo "Sites up: $success_count"
-          echo "Sites down: $failure_count"
-          echo "Total sites: $total_sites"
+          down=$((total - up))
           
-          # Set exit code based on results
-          if [[ $failure_count -eq 0 ]]; then
-            echo "All websites are accessible"
-            exit 0
-          elif [[ $success_count -eq 0 ]]; then
-            echo "All websites are down"
-            exit 2
-          else
-            echo "Some websites are down ($failure_count/$total_sites)"
-            exit 1
-          fi
+          echo "=== Summary: $up/$total sites up ==="
+          
+          [[ $down -eq 0 ]] && exit 0
+          [[ $up -eq 0 ]] && exit 2
+          exit 1
