@@ -8,8 +8,6 @@ on:
 jobs:
   check-websites:
     runs-on: ubuntu-latest
-    # Uncomment to restrict to specific branches:
-    # if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     
     steps:
       - uses: actions/checkout@v4
@@ -36,39 +34,50 @@ jobs:
           SLACK_ON=$(echo "$NOTIF" | jq -r '.slack.enabled // false')
           DISCORD_ON=$(echo "$NOTIF" | jq -r '.discord.enabled // false')
           
-          notify() {
-            local type=$1 name=$2 status=$3 url=$4 msg=${5:-}
+          # Arrays to store down sites
+          declare -a DOWN_SITES=()
+          
+          send_notifications() {
+            local count=${#DOWN_SITES[@]}
+            [[ $count -eq 0 ]] && return 0
             
-            if [[ "$status" == "200" ]]; then
-              return 0
-            fi
+            # Build message with all down sites
+            local tg_msg="⚠️ <b>ALERT: $count site(s) down!</b>%0A%0A"
+            local slack_msg="⚠️ *ALERT: $count site(s) down!*\n\n"
+            local discord_msg="⚠️ @here **ALERT: $count site(s) down!**\n\n"
             
-            local alert="⚠️ $name is down!"
-            [[ -n "$status" ]] && alert="$alert (HTTP $status)" || alert="$alert ($msg)"
+            for site_info in "${DOWN_SITES[@]}"; do
+              tg_msg="${tg_msg}• ${site_info}%0A"
+              slack_msg="${slack_msg}• ${site_info}\n"
+              discord_msg="${discord_msg}• ${site_info}\n"
+            done
             
+            # Send single notification for all down sites
             if [[ "$TG_ON" == "true" && -n "${TELEGRAM_TOKEN:-}" && -n "${TELEGRAM_GROUP:-}" ]]; then
               curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
                 -d "chat_id=${TELEGRAM_GROUP}" \
-                -d "text=<b>$alert</b>%0A%0AURL: $url" \
+                -d "text=$tg_msg" \
                 -d "parse_mode=HTML" &>/dev/null || true
             fi
             
             if [[ "$SLACK_ON" == "true" && -n "${SLACK_WEBHOOK:-}" ]]; then
               curl -sS -X POST "$SLACK_WEBHOOK" \
                 -H "Content-Type: application/json" \
-                -d "{\"text\":\"*$alert*\nURL: $url\"}" &>/dev/null || true
+                -d "{\"text\":\"$slack_msg\"}" &>/dev/null || true
             fi
             
             if [[ "$DISCORD_ON" == "true" && -n "${DISCORD_WEBHOOK:-}" ]]; then
               curl -sS -X POST "$DISCORD_WEBHOOK" \
                 -H "Content-Type: application/json" \
-                -d "{\"content\":\"@here **$alert**\nURL: $url\"}" &>/dev/null || true
+                -d "{\"content\":\"$discord_msg\"}" &>/dev/null || true
             fi
           }
           
           check_site() {
             local name=$1 url=$2
             echo "Checking $name..."
+            
+            local final_status="" final_error=""
             
             for ((attempt=1; attempt<=RETRIES; attempt++)); do
               [[ $attempt -gt 1 ]] && { echo "  Retry $attempt/$RETRIES"; sleep 5; }
@@ -78,7 +87,7 @@ jobs:
                 status="${response##*$'\n'}"
                 echo "  Status: $status"
                 [[ "$status" == "200" ]] && return 0
-                notify "http" "$name" "$status" "$url"
+                final_status="$status"
                 continue
               }
               
@@ -91,8 +100,15 @@ jobs:
               esac
               
               echo "  Failed: $error"
-              notify "error" "$name" "" "$url" "$error"
+              final_error="$error"
             done
+            
+            # Add to down sites list instead of sending notification
+            if [[ -n "$final_status" ]]; then
+              DOWN_SITES+=("$name (HTTP $final_status): $url")
+            else
+              DOWN_SITES+=("$name ($final_error): $url")
+            fi
             
             return 1
           }
@@ -119,7 +135,9 @@ jobs:
           
           echo "=== Summary: $up/$total sites up ==="
           
+          # Send single notification with all down sites
+          send_notifications
+          
           [[ $down -eq 0 ]] && exit 0
           [[ $up -eq 0 ]] && exit 2
-          # exiting...
           exit 1
