@@ -8,6 +8,8 @@ on:
 jobs:
   check-websites:
     runs-on: ubuntu-latest
+    # Uncomment to restrict to specific branches:
+    # if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     
     steps:
       - uses: actions/checkout@v4
