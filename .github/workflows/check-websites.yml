@@ -121,4 +121,5 @@ jobs:
           
           [[ $down -eq 0 ]] && exit 0
           [[ $up -eq 0 ]] && exit 2
+          # exiting...
           exit 1
