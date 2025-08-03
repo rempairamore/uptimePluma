@@ -6,7 +6,7 @@
     "websites": [
         {
             "name": "OpenCitations offcial WebSite",
-            "URL": "https://opencitations.net/"
+            "URL": "https://opencitationstestdontexist.net/"
         },
         {
             "name": "Index API",
@@ -28,7 +28,7 @@
             "webhook_url": "${{ secrets.SLACK_WEBHOOK }}"
         },
         "discord": {
-            "enabled": true,
+            "enabled": false,
             "webhook_url": "${{ secrets.DISCORD_WEBHOOK }}"
         }
     }
